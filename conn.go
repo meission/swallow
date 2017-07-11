@@ -4,7 +4,9 @@ import "net"
 
 type Conn struct {
 	net.Conn
-	able bool
+	name   string
+	able   bool
+	buffer []byte
 }
 
 func NewConn(c net.Conn, len int) *Conn {

@@ -28,8 +28,6 @@ type Server struct {
 	MaxPerConn int
 
 	perIPConnCounter perIPConnCounter
-	//
-	buffer []byte
 }
 
 // DefaultConcurrency is the maximum number of concurrent connections
@@ -72,37 +70,6 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 }
 
-var defaultServerName = []byte("swallow server")
-
-func (s *Server) getServerName() []byte {
-	if len(s.Name) == 0 {
-		return defaultServerName
-	}
-	return s.Name
-}
-
-var globalConnID uint64
-
-func nextConnID() uint64 {
-	return atomic.AddUint64(&globalConnID, 1)
-}
-
-func (s *Server) serveConn(c net.Conn) error {
-	//	serverName := s.getServerName()
-	connNum := uint64(0)
-	var (
-		err error
-	)
-	for {
-		connNum++
-		//TODO
-		if s.MaxPerConn > 0 && connNum >= uint64(s.MaxPerConn) {
-			//	ctx.SetConnectionClose()
-		}
-	}
-	return err
-}
-
 func acceptConn(s *Server, ln net.Listener) (net.Conn, error) {
 	for {
 		c, err := ln.Accept()
@@ -133,6 +100,37 @@ func acceptConn(s *Server, ln net.Listener) (net.Conn, error) {
 	}
 }
 
+var defaultServerName = []byte("swallow server")
+
+func (s *Server) getServerName() []byte {
+	if len(s.Name) == 0 {
+		return defaultServerName
+	}
+	return s.Name
+}
+
+var globalConnID uint64
+
+func nextConnID() uint64 {
+	return atomic.AddUint64(&globalConnID, 1)
+}
+
+func (s *Server) serveConn(c *Conn) error {
+	//	serverName := s.getServerName()
+	connNum := uint64(0)
+	var (
+		err error
+	)
+	for {
+		connNum++
+		//TODO
+		if s.MaxPerConn > 0 && connNum >= uint64(s.MaxPerConn) {
+			//	ctx.SetConnectionClose()
+		}
+	}
+	return err
+}
+
 func wrapPerIPConn(s *Server, c net.Conn) net.Conn {
 	ip := getUint32IP(c)
 	if ip == 0 {
@@ -150,7 +148,8 @@ func wrapPerIPConn(s *Server, c net.Conn) net.Conn {
 // Serve serves incoming connections from the given listener.
 func (s *Server) handle() error {
 	var (
-		c   net.Conn
+		c   *Conn
+		ok  bool
 		err error
 	)
 	maxWorkersCount := s.getConcurrency()
@@ -163,13 +162,12 @@ func (s *Server) handle() error {
 		b := NewBucket(10)
 		go func(b *Bucket) {
 			for {
-				msg, ok := <-b.writeChan
+				c, ok = <-b.writeChan
 				if !ok {
 					wp.Stop()
 					return
 				}
-				s.buffer = msg.b
-				if !wp.Serve(msg.Conn) {
+				if !wp.Serve(c) {
 					c.Close()
 					time.Sleep(100 * time.Millisecond)
 				}
@@ -179,6 +177,6 @@ func (s *Server) handle() error {
 	}
 	return err
 }
-func (s *Server) write(c net.Conn) error {
+func (s *Server) write(c *Conn) error {
 	return nil
 }

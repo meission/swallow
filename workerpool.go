@@ -15,28 +15,21 @@ import (
 type workerPool struct {
 	// Function for serving server connections.
 	// It must leave c unclosed.
-	WorkerFunc func(c net.Conn) error
-
-	MaxWorkersCount int
-
+	WorkerFunc            func(*Conn) error
+	MaxWorkersCount       int
 	MaxIdleWorkerDuration time.Duration
-
 	//Logger Logger
-
-	lock         sync.Mutex
-	workersCount int
-	mustStop     bool
-
-	ready []*workerChan
-
-	stopCh chan struct{}
-
+	lock           sync.Mutex
+	workersCount   int
+	mustStop       bool
+	ready          []*workerChan
+	stopCh         chan struct{}
 	workerChanPool sync.Pool
 }
 
 type workerChan struct {
 	lastUseTime time.Time
-	ch          chan net.Conn
+	ch          chan *Conn
 }
 
 func (wp *workerPool) Start() {
@@ -127,7 +120,7 @@ func (wp *workerPool) Serve(c net.Conn) bool {
 	if ch == nil {
 		return false
 	}
-	ch.ch <- c
+	ch.ch <- &Conn{Conn: c}
 	return true
 }
 
@@ -169,7 +162,7 @@ func (wp *workerPool) getCh() *workerChan {
 		vch := wp.workerChanPool.Get()
 		if vch == nil {
 			vch = &workerChan{
-				ch: make(chan net.Conn, workerChanCap),
+				ch: make(chan *Conn, workerChanCap),
 			}
 		}
 		ch = vch.(*workerChan)
@@ -194,7 +187,7 @@ func (wp *workerPool) release(ch *workerChan) bool {
 }
 
 func (wp *workerPool) exec(ch *workerChan) {
-	var c net.Conn
+	var c *Conn
 	var err error
 	for c = range ch.ch {
 		if c == nil {
